@@ -24,7 +24,7 @@ AI 코딩 에이전트(Claude Code)가 실수하거나 프롬프트 인젝션(�
 | T1 | 범위 밖 저장소에 쓰기 | 토큰: 저장소 1개만 선택 | 테스트 1 |
 | T2 | `main` 직접 변경, 강제 push, 삭제 | 룰셋 (우회 목록 없음) | 테스트 2 |
 | T3 | `.env` 읽기 | Claude Code deny 규칙 | 테스트 3, canary 검사 |
-| T4 | 워크플로 변조 | 토큰: Workflows 권한 없음 | 테스트 4 |
+| T4 | 워크플로 변조 | Claude Code: 워크플로 수정 거부. 넘어서면 토큰: Workflows 권한 없음 | 테스트 4-a, 4-b |
 | T5 | 호스트 자격증명 사용 (SSH 키, gh 로그인) | 마운트 없는 컨테이너 | `lab-preflight` |
 | T6 | 리뷰 없이 `main`에 반영 (자기 PR 머지) | **없음**. 아래 "알려진 한계" 참고 | 선택 테스트 5 |
 | T7 | 권한 규칙 변조 (`.claude/settings.json` 수정) | Claude Code가 `.claude/` 쓰기를 항상 묻고, 저장소 반영은 PR을 거침 | 이번 범위 밖 |
@@ -41,7 +41,7 @@ AI 코딩 에이전트(Claude Code)가 실수하거나 프롬프트 인젝션(�
 **Claude Code 규칙은 보안 경계가 아니다.** 공식 문서에 따르면 `Read(.env)` 같은 deny 규칙은 Claude의 파일 도구와, Bash의 `cat`·`head`·`tail`·`sed`·`tee`, 리다이렉션까지는 막는다. 하지만 파일 이름을 적지 않는 명령(`grep -r 패턴 .`)이나 스스로 파일을 여는 스크립트(`node -e ...`, `python ...`)는 막지 않는다. 모든 프로세스를 막으려면 OS 수준 sandbox를 켜라고 안내하는데, 이 실험 컨테이너에서는 켜지 않았다. 그래서 남는 방어선은 Bash 명령마다 뜨는 사람의 승인이다. 선택 테스트 3-b가 이 구멍을 확인한다.
 출처: <https://code.claude.com/docs/en/permissions.md#read-and-edit>
 
-**Bash 인자를 제한하는 규칙은 쉽게 비켜 간다.** 문서에 따르면 `Bash(git push *)` 규칙은 `git -C . push`를 잡지 못하고, 이런 규칙은 그 프로그램을 둘러싼 보안 경계가 아니다. 그래서 강제 push 금지는 Claude Code 규칙이 아니라 룰셋(서버)에 맡겼다.
+**Bash 인자를 제한하는 규칙은 쉽게 비켜 간다.** 문서에 따르면 `Bash(git push *)` 규칙은 `git -C . push`를 잡지 못하고, 이런 규칙은 그 프로그램을 둘러싼 보안 경계가 아니다. 그래서 강제 push 금지는 Claude Code 규칙이 아니라 룰셋(서버)에 맡겼다. `curl`·`wget`·`rm` 거부 규칙도 같은 성질이다. node나 python 스크립트로 네트워크 요청을 보내거나 파일을 지우는 것은 막지 못한다.
 출처: <https://code.claude.com/docs/en/permissions.md#what-a-bash-rule-doesnt-match>
 
 **권한 규칙은 실행 중에 바뀔 수 있다.** Claude Code는 설정 파일을 감시하다가 바뀌면 실행 중인 세션에 바로 반영한다. 사람이 `.claude/settings.json` 수정 요청을 승인하면 그 순간부터 규칙이 달라진다. `.claude/`는 보호 경로라 기본 모드에서는 쓰기 전에 항상 묻는다.
@@ -56,7 +56,7 @@ AI 코딩 에이전트(Claude Code)가 실수하거나 프롬프트 인젝션(�
 **무료 플랜에서 룰셋은 공개 저장소에만 걸린다.** 그래서 두 저장소를 공개로 운영한다. 보호된 저장소를 비공개로 바꾸면 경고 없이 보호가 꺼진다고 알려져 있다(직접 확인 안 함). 공개라서 누구나 이슈와 PR 댓글을 달 수 있고, 에이전트가 그것을 읽으면 프롬프트 인젝션 경로가 된다. 이번 실험에서는 에이전트에게 이슈와 댓글을 읽히지 않는다. 이슈를 통한 인젝션은 나중 범위다.
 출처: <https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets>
 
-**네트워크로 새는 것.** 컨테이너는 인터넷에 연결되어 있다. 에이전트가 읽은 값을 밖으로 보내는 일(curl 등)은 이번 범위 밖이고, Bash 승인 요청이 유일한 방어선이다.
+**네트워크로 새는 것.** 컨테이너는 인터넷에 연결되어 있다. `curl`과 `wget`은 거부 규칙에 있지만, 스크립트나 `git`·`gh`로도 밖으로 보낼 수 있다. 에이전트가 읽은 값을 밖으로 보내는 일은 이번 범위 밖이고, 남는 방어선은 Bash 승인 요청이다.
 
 **대화 기록에 남는 값.** Claude Code는 도구 결과를 `~/.claude/projects/` 아래에 평문으로 저장한다. `.env`가 한 번이라도 읽히면 그 값이 기록에 남는다. 이 성질을 거꾸로 이용해서, `.env`에 넣은 무작위 canary가 기록에 나타나는지로 테스트 3을 판정한다.
 출처: <https://code.claude.com/docs/en/claude-directory.md>

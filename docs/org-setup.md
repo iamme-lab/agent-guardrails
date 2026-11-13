@@ -14,6 +14,41 @@
 | Actions `GITHUB_TOKEN` 기본 권한 | read ✓ | Actions가 PR을 승인하는 것도 막혀 있음 ✓ |
 | 허용 액션 | 전부 | 액션 SHA 고정 강제는 꺼져 있음 |
 
+### 다시 확인하는 명령
+
+org 소유자로 `gh` 로그인한 상태에서 누구나 같은 명령으로 확인할 수 있습니다. 결과는 2026-11-13T09:59Z(UTC)에 실행한 값입니다.
+
+| 확인할 것 | 명령 | 결과 |
+| --- | --- | --- |
+| 플랜, 2단계 인증 필수, 소유 이메일 도메인 | `gh api orgs/iamme-lab --jq '{plan: .plan.name, two_factor_requirement_enabled, domain: (.billing_email\|split("@")[1])}'` | `free`, `true`, 회사 도메인 아님 |
+| 멤버 수 | `gh api orgs/iamme-lab/members --jq length` | `1` |
+| 저장소 공개 여부 | 아래 "저장소와 룰셋" 명령 | 두 저장소 모두 `PUBLIC` |
+| 룰셋 | 아래 "저장소와 룰셋" 명령 | 두 저장소 모두 `active`, 우회 0, `~DEFAULT_BRANCH`, `deletion`·`non_fast_forward`·`pull_request`(승인 0) |
+| main 직접 push 거절 | 소유자 계정으로 각 저장소에서 `probe=$(git commit-tree "HEAD^{tree}" -p HEAD -m "ruleset probe")` 다음 `git push origin "${probe}:refs/heads/main"`. 로컬 브랜치와 작업 트리는 바뀌지 않음 | 두 저장소 모두 `GH013: Repository rule violations found for refs/heads/main.` `Changes must be made through a pull request.` (2026-11-13, 룰셋 적용 직후 실행) |
+| Actions 기본 권한 | `gh api orgs/iamme-lab/actions/permissions/workflow` | `default_workflow_permissions: read`, `can_approve_pull_request_reviews: false` |
+| 허용 액션 | `gh api orgs/iamme-lab/actions/permissions` | `allowed_actions: all`, `sha_pinning_required: false` |
+| org 단위 룰셋 | `gh api orgs/iamme-lab/rulesets` | HTTP 403 `Upgrade to GitHub Team to enable this feature.` |
+| CI | `gh run list -R iamme-lab/agent-sandbox -L 3` | run 43374732928(main), 43377298821(PR #1) 모두 success |
+
+#### 저장소와 룰셋 (두 저장소 한 번에)
+
+그대로 복사해서 실행합니다. zsh와 bash에서 둘 다 확인했습니다.
+
+```bash
+for r in agent-guardrails agent-sandbox; do
+  id=$(gh api "repos/iamme-lab/${r}/rulesets" --jq '.[] | select(.name == "protect-main") | .id')
+  printf '%s  %s  ' "${r}" "$(gh repo view "iamme-lab/${r}" --json visibility -q .visibility)"
+  gh api "repos/iamme-lab/${r}/rulesets/${id}" --jq '{enforcement, bypass: (.bypass_actors | length), target: .conditions.ref_name.include, rules: [.rules[].type], approvals: (.rules[] | select(.type == "pull_request") | .parameters.required_approving_review_count)} | tojson'
+done
+```
+
+2026-11-13T11:05Z(UTC) 실행 결과:
+
+```
+agent-guardrails  PUBLIC  {"approvals":0,"bypass":0,"enforcement":"active","rules":["deletion","non_fast_forward","pull_request"],"target":["~DEFAULT_BRANCH"]}
+agent-sandbox  PUBLIC  {"approvals":0,"bypass":0,"enforcement":"active","rules":["deletion","non_fast_forward","pull_request"],"target":["~DEFAULT_BRANCH"]}
+```
+
 ## 적용한 것 (API, [github/apply.sh](../github/apply.sh))
 
 | 항목 | 내용 |

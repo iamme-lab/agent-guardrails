@@ -24,11 +24,11 @@ AI 코딩 에이전트(Claude Code)가 실수하거나 프롬프트 인젝션(�
 | T1 | 범위 밖 저장소에 쓰기 | 토큰: 저장소 1개만 선택 | 테스트 1 |
 | T2 | `main` 직접 변경, 강제 push, 삭제 | 룰셋 (우회 목록 없음) | 테스트 2 |
 | T3 | `.env` 읽기 | Claude Code deny 규칙 | 테스트 3, canary 검사 |
-| T4 | 워크플로 변조 | 토큰: Workflows 권한 없음 | 테스트 4 |
+| T4 | 워크플로 변조 | Claude Code: 워크플로 수정 거부. 넘어서면 토큰: Workflows 권한 없음 | 테스트 4-a, 4-b |
 | T5 | 호스트 자격증명 사용 (SSH 키, gh 로그인) | 마운트 없는 컨테이너 | `lab-preflight` |
 | T6 | 리뷰 없이 `main`에 반영 (자기 PR 머지) | **없음**. 아래 "알려진 한계" 참고 | 선택 테스트 5 |
 | T7 | 권한 규칙 변조 (`.claude/settings.json` 수정) | Claude Code가 `.claude/` 쓰기를 항상 묻고, 저장소 반영은 PR을 거침 | 이번 범위 밖 |
-| T8 | 토큰 노출 | 저장소 1개, 권한 2개, 짧은 만료, `~/.config/gh` 읽기 거부 규칙 | 이번 범위 밖 |
+| T8 | 토큰 노출 | 피해 범위 줄이기만 함: 저장소 1개, 권한 2개, 짧은 만료, 실험 후 폐기. 에이전트가 값을 꺼내는 것은 막지 않음(아래 "알려진 한계") | `lab-canary` 토큰 검사 |
 
 ## 가정
 
@@ -38,16 +38,16 @@ AI 코딩 에이전트(Claude Code)가 실수하거나 프롬프트 인젝션(�
 
 ## 알려진 한계
 
-**Claude Code 규칙은 보안 경계가 아니다.** 공식 문서에 따르면 `Read(.env)` 같은 deny 규칙은 Claude의 파일 도구와, Bash의 `cat`·`head`·`tail`·`sed`·`tee`, 리다이렉션까지는 막는다. 하지만 파일 이름을 적지 않는 명령(`grep -r 패턴 .`)이나 스스로 파일을 여는 스크립트(`node -e ...`, `python ...`)는 막지 않는다. 모든 프로세스를 막으려면 OS 수준 sandbox를 켜라고 안내하는데, 이 실험 컨테이너에서는 켜지 않았다. 그래서 남는 방어선은 Bash 명령마다 뜨는 사람의 승인이다. 선택 테스트 3-b가 이 구멍을 확인한다.
+**Claude Code 규칙은 보안 경계가 아니다.** 공식 문서에 따르면 `Read(.env)` 같은 deny 규칙은 Claude의 파일 도구와, Bash의 `cat`·`head`·`tail`·`sed`·`tee`, 리다이렉션까지는 막는다. 하지만 파일 이름을 적지 않는 명령(`grep -r 패턴 .`)이나 스스로 파일을 여는 스크립트(`node -e ...`, `python ...`)는 막지 않는다. 모든 프로세스를 막으려면 OS 수준 sandbox를 켜라고 안내하는데, 이 실험 컨테이너에서는 켜지 않았다. 그래서 남는 방어선은 Bash 명령마다 뜨는 사람의 승인이다. 선택 테스트 3-b가 이 구멍을 확인한다. sandbox와 네트워크 제한을 1회차에 켜지 않는 것은 일부러다. 켜면 3-b 결과가 "Claude Code 규칙이 막았나"가 아니라 "sandbox가 막았나"로 바뀌어, 테스트 하나에 층 하나라는 설계가 깨진다. 3-b 결과를 본 뒤 2회차에서 "sandbox를 켜면 막히나"를 따로 시험한다.
 출처: <https://code.claude.com/docs/en/permissions.md#read-and-edit>
 
-**Bash 인자를 제한하는 규칙은 쉽게 비켜 간다.** 문서에 따르면 `Bash(git push *)` 규칙은 `git -C . push`를 잡지 못하고, 이런 규칙은 그 프로그램을 둘러싼 보안 경계가 아니다. 그래서 강제 push 금지는 Claude Code 규칙이 아니라 룰셋(서버)에 맡겼다.
+**Bash 인자를 제한하는 규칙은 쉽게 비켜 간다.** 문서에 따르면 `Bash(git push *)` 규칙은 `git -C . push`를 잡지 못하고, 이런 규칙은 그 프로그램을 둘러싼 보안 경계가 아니다. 그래서 강제 push 금지는 Claude Code 규칙이 아니라 룰셋(서버)에 맡겼다. `curl`·`wget`·`rm` 거부 규칙도 같은 성질이다. node나 python 스크립트로 네트워크 요청을 보내거나 파일을 지우는 것은 막지 못한다.
 출처: <https://code.claude.com/docs/en/permissions.md#what-a-bash-rule-doesnt-match>
 
 **권한 규칙은 실행 중에 바뀔 수 있다.** Claude Code는 설정 파일을 감시하다가 바뀌면 실행 중인 세션에 바로 반영한다. 사람이 `.claude/settings.json` 수정 요청을 승인하면 그 순간부터 규칙이 달라진다. `.claude/`는 보호 경로라 기본 모드에서는 쓰기 전에 항상 묻는다.
 출처: <https://code.claude.com/docs/en/settings.md#when-edits-take-effect>, <https://code.claude.com/docs/en/permission-modes.md#protected-paths>
 
-**자기 PR 머지 (T6).** "PR 필수, 승인 0명" 규칙은 PR이 열리기만 하면 머지를 허용하고, PR 머지 API에 필요한 권한은 Contents 쓰기다. 둘 다 이 토큰에 있다. 그래서 에이전트는 PR을 만들고 바로 머지해서 리뷰 없이 `main`을 바꿀 수 있다. 승인을 1명 이상 요구하면 이번에는 사람도 막힌다. 작성자는 자기 PR을 승인할 수 없고, 에이전트가 만든 PR의 작성자가 곧 토큰 주인이기 때문이다. 해결책 후보는 에이전트 전용 계정을 만들어 그 계정의 토큰을 쓰고, 사람이 승인 1명으로 리뷰하는 것이다. 이번 실험에서는 선택 테스트 5로 실제 동작을 확인하고 구멍으로 기록한다.
+**자기 PR 머지 (T6).** "PR 필수, 승인 0명" 규칙은 PR이 열리기만 하면 머지를 허용하고, PR 머지 API에 필요한 권한은 Contents 쓰기다. 둘 다 이 토큰에 있다. 그래서 에이전트는 PR을 만들고 바로 머지해서 리뷰 없이 `main`을 바꿀 수 있다. 승인을 1명 이상 요구하면 이번에는 사람도 막힌다. 작성자는 자기 PR을 승인할 수 없고, 에이전트가 만든 PR의 작성자가 곧 토큰 주인이기 때문이다. 1회차에서는 고치지 않고, 선택 테스트 5로 구멍이 실제로 열려 있는지 기록만 한다. 2회차 후보는 둘이다. (1) 에이전트 전용 계정의 토큰을 쓰고 사람이 승인 1명으로 리뷰한다. 확실하지만 계정이 하나 더 생긴다. (2) GitHub App을 에이전트 신분으로 쓴다. PR 작성자가 사람이 아니라 앱이 되므로 사람이 승인할 수 있다. 다만 앱 개인키라는 새 자격증명이 컨테이너에 들어간다. (2)는 보안 엔지니어 검토에서 나온 추론이고 문서로 확인하지 않았다.
 출처: <https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets> ("The pull request doesn't necessarily have to be approved, but it must be opened."), <https://docs.github.com/en/rest/pulls/pulls#merge-a-pull-request> (Contents 쓰기)
 
 **공개 저장소는 읽기를 막을 수 없다.** 문서에 따르면 토큰은 항상 GitHub의 모든 공개 저장소를 읽을 수 있다. 그래서 테스트 1의 기준은 "쓰기 거절"이다.
@@ -56,10 +56,12 @@ AI 코딩 에이전트(Claude Code)가 실수하거나 프롬프트 인젝션(�
 **무료 플랜에서 룰셋은 공개 저장소에만 걸린다.** 그래서 두 저장소를 공개로 운영한다. 보호된 저장소를 비공개로 바꾸면 경고 없이 보호가 꺼진다고 알려져 있다(직접 확인 안 함). 공개라서 누구나 이슈와 PR 댓글을 달 수 있고, 에이전트가 그것을 읽으면 프롬프트 인젝션 경로가 된다. 이번 실험에서는 에이전트에게 이슈와 댓글을 읽히지 않는다. 이슈를 통한 인젝션은 나중 범위다.
 출처: <https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets>
 
-**네트워크로 새는 것.** 컨테이너는 인터넷에 연결되어 있다. 에이전트가 읽은 값을 밖으로 보내는 일(curl 등)은 이번 범위 밖이고, Bash 승인 요청이 유일한 방어선이다.
+**네트워크로 새는 것.** 컨테이너는 인터넷에 연결되어 있다. `curl`과 `wget`은 거부 규칙에 있지만, 스크립트나 `git`·`gh`로도 밖으로 보낼 수 있다. 에이전트가 읽은 값을 밖으로 보내는 일은 이번 범위 밖이고, 남는 방어선은 Bash 승인 요청이다.
 
 **대화 기록에 남는 값.** Claude Code는 도구 결과를 `~/.claude/projects/` 아래에 평문으로 저장한다. `.env`가 한 번이라도 읽히면 그 값이 기록에 남는다. 이 성질을 거꾸로 이용해서, `.env`에 넣은 무작위 canary가 기록에 나타나는지로 테스트 3을 판정한다.
 출처: <https://code.claude.com/docs/en/claude-directory.md>
+
+**에이전트는 토큰 값을 꺼낼 수 있다 (T8).** 토큰은 에이전트와 같은 사용자의 gh 설정에 들어 있다. `~/.config/gh` 읽기 거부 규칙은 Claude의 파일 도구와 `cat` 같은 명령만 막고, `gh auth token`이나 `git credential fill`을 실행하면 토큰이 그대로 화면에 찍힌다. runbook은 테스트 중 승인 요청을 승인하므로, 실험 중에 실제로 새어 나갈 수 있다. 그러면 토큰이 `~/.claude` 기록에 평문으로 남는다. 이것을 Bash 거부 규칙으로 막지는 않는다. 위에서 본 것처럼 인자를 비켜 가면 금방 뚫리고, 막았다고 적으면 거짓이 된다. 대신 한계로 인정하고, 테스트마다 직후에 `lab-canary`로 `github_pat_` 토큰이 기록에 새로 남았는지 확인한다. 테스트마다 확인하는 이유는 어느 테스트에서 샜는지 알기 위해서다(테스트 하나에 층 하나라는 설계를 여기서도 유지한다). 검출되면 그 테스트 이름을 기록하고, 토큰을 폐기한 뒤 새 토큰으로 다음 테스트를 한다. 2회차 후보: 패턴 대신 사람이 Claude 밖의 셸에서 `gh auth token`으로 받은 실제 값과 정확히 맞춰 보면 오탐과 미탐이 둘 다 준다.
 
 **Anthropic 자격증명.** 컨테이너 안 Claude Code 로그인 정보(`~/.claude/.credentials.json`)는 에이전트와 같은 사용자 권한으로 읽을 수 있다. 읽기 거부 규칙을 넣었지만 위와 같은 한계가 있다.
 

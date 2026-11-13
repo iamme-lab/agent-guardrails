@@ -46,4 +46,26 @@ docs/runbook.md      실험 절차와 테스트 프롬프트
 records/             확인 기록
 container/           실험 컨테이너 (Dockerfile, preflight·setup·canary 스크립트)
 github/              저장소 생성과 룰셋 적용 스크립트, 룰셋 정의
+agent-sandbox/       (로컬 전용) 실험 저장소 clone. 이 저장소에서는 무시
+```
+
+## 로컬에서 관리하기
+
+실험 저장소는 별도 GitHub 저장소지만, 로컬에서는 이 저장소 안의 `agent-sandbox/`에 clone 해서 한 폴더에서 관리합니다. `agent-sandbox/`는 `.gitignore`에 들어 있어서 이 저장소에 섞이지 않습니다. 커밋과 push는 각 저장소에서 따로 합니다.
+
+```bash
+git clone https://github.com/iamme-lab/agent-guardrails.git iamme
+cd iamme
+git clone https://github.com/iamme-lab/agent-sandbox.git
+```
+
+두 저장소의 `main`은 룰셋으로 보호되고 우회 목록이 비어 있어서, org 소유자도 `main`에 직접 push할 수 없습니다. 변경은 브랜치로 push한 뒤 PR로 머지합니다. 필요한 승인이 0명이라 PR을 만들고 바로 머지할 수 있습니다.
+
+```bash
+git switch -c docs/update
+git add -A && git commit -m "변경 이유"
+git push -u origin HEAD
+gh pr create --fill
+gh pr merge --squash --delete-branch
+git switch main && git pull
 ```

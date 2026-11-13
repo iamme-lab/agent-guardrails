@@ -1,1 +1,4 @@
 .DS_Store
+
+# 실험 저장소(iamme-lab/agent-sandbox)는 별도 git 저장소다. 로컬에서는 이 폴더에 clone 해 두고 따로 커밋한다.
+agent-sandbox/

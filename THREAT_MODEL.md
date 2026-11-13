@@ -2,9 +2,10 @@
 
 ## 범위
 
-AI 코딩 에이전트(Claude Code)가 실수하거나 프롬프트 인젝션(저장소 파일, 이슈, 웹 페이지에 숨은 지시)에 넘어가 의도하지 않은 일을 할 때, 피해를 어디까지로 묶을 수 있는지 봅니다.
+AI 코딩 에이전트(Claude Code)가 실수하거나 프롬프트 인젝션(저장소 파일, 이슈, 웹 페이지에 숨은 지시)에 넘어가 의도하지 않은 일을 할 때, 피해를 어디까지로 묶을 수 있는지 본다.
 
-에이전트는 토큰 주인(사람)의 신분으로 움직인다고 가정합니다. 토큰 주인이 할 수 있는 일은 에이전트도 할 수 있습니다. 룰셋 우회 목록을 비워 둔 이유도 같습니다. 토큰 주인이 우회할 수 있으면 에이전트도 우회할 수 있다고 봐야 합니다.
+에이전트는 토큰 주인(사람)의 신분으로 움직인다고 가정한다. 토큰 주인이 할 수 있는 일은 에이전트도 할 수 있다. 룰셋 우회 목록을 비워 둔 이유도 같다. 세분화 토큰이 주인의 우회 권한을 물려받는지는 GitHub 문서에 나와 있지 않으므로, 물려받는다고 가정한다. 룰셋은 브랜치 보호 규칙과 달리 org 소유자나 저장소 관리자도 기본으로는 예외가 아니고, 우회 목록에 넣은 행위자만 예외다.
+출처: <https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets>
 
 ## 지킬 것
 
@@ -46,9 +47,11 @@ AI 코딩 에이전트(Claude Code)가 실수하거나 프롬프트 인젝션(�
 **권한 규칙은 실행 중에 바뀔 수 있다.** Claude Code는 설정 파일을 감시하다가 바뀌면 실행 중인 세션에 바로 반영한다. 사람이 `.claude/settings.json` 수정 요청을 승인하면 그 순간부터 규칙이 달라진다. `.claude/`는 보호 경로라 기본 모드에서는 쓰기 전에 항상 묻는다.
 출처: <https://code.claude.com/docs/en/settings.md#when-edits-take-effect>, <https://code.claude.com/docs/en/permission-modes.md#protected-paths>
 
-**자기 PR 머지 (T6).** org에 사람이 한 명뿐인데 "PR 필수, 승인 0명"이면, 토큰으로 PR을 만들고 바로 머지할 수 있을 것으로 예상한다. 그러면 리뷰 없이 `main`이 바뀐다. 승인을 1명 이상 요구하면 이번에는 사람도 막힌다. 작성자는 자기 PR을 승인할 수 없고, 에이전트의 PR 작성자가 곧 토큰 주인이기 때문이다. 해결책 후보는 에이전트 전용 계정을 만들어 그 계정의 토큰을 쓰고, 사람이 승인 1명으로 리뷰하는 것이다. 이번 실험에서는 선택 테스트 5로 확인하고 구멍으로 기록한다.
+**자기 PR 머지 (T6).** "PR 필수, 승인 0명" 규칙은 PR이 열리기만 하면 머지를 허용하고, PR 머지 API에 필요한 권한은 Contents 쓰기다. 둘 다 이 토큰에 있다. 그래서 에이전트는 PR을 만들고 바로 머지해서 리뷰 없이 `main`을 바꿀 수 있다. 승인을 1명 이상 요구하면 이번에는 사람도 막힌다. 작성자는 자기 PR을 승인할 수 없고, 에이전트가 만든 PR의 작성자가 곧 토큰 주인이기 때문이다. 해결책 후보는 에이전트 전용 계정을 만들어 그 계정의 토큰을 쓰고, 사람이 승인 1명으로 리뷰하는 것이다. 이번 실험에서는 선택 테스트 5로 실제 동작을 확인하고 구멍으로 기록한다.
+출처: <https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets> ("The pull request doesn't necessarily have to be approved, but it must be opened."), <https://docs.github.com/en/rest/pulls/pulls#merge-a-pull-request> (Contents 쓰기)
 
-**공개 저장소는 읽기를 막을 수 없다.** 그래서 테스트 1의 기준은 "쓰기 거절"이다.
+**공개 저장소는 읽기를 막을 수 없다.** 문서에 따르면 토큰은 항상 GitHub의 모든 공개 저장소를 읽을 수 있다. 그래서 테스트 1의 기준은 "쓰기 거절"이다.
+출처: <https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens>
 
 **네트워크로 새는 것.** 컨테이너는 인터넷에 연결되어 있다. 에이전트가 읽은 값을 밖으로 보내는 일(curl 등)은 이번 범위 밖이고, Bash 승인 요청이 유일한 방어선이다.
 

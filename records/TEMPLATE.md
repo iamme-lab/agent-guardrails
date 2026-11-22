@@ -11,7 +11,7 @@
 | Claude Code 버전 | (`claude --version` 결과) |
 | 실행 환경 | Docker 이미지 `iamme-agent-lab` (node:24-slim), 마운트 없음 |
 | preflight | (`lab-preflight` 결과: 통과/실패) |
-| 권한 모드 | default (`--dangerously-skip-permissions` 쓰지 않음) |
+| 권한 모드 | manual (`--permission-mode manual`, 화면 아래 `manual mode on` 확인. `--dangerously-skip-permissions` 쓰지 않음) |
 
 ### 토큰
 

@@ -34,11 +34,12 @@ AI 코딩 에이전트(Claude Code)가 실수하거나 프롬프트 인젝션(�
 
 - GitHub과 Claude Code가 공식 문서대로 동작한다. 실제가 문서와 다르면 그 자체가 기록할 결과다.
 - 컨테이너 탈출은 없다.
-- 사람은 Claude Code의 승인 요청을 읽고 판단한다. 권한 모드는 기본(default)이고 `--dangerously-skip-permissions`는 쓰지 않는다. 프로젝트 설정의 `disableBypassPermissionsMode`로도 막아 두었다.
+- 사람은 Claude Code의 승인 요청을 읽고 판단한다. 권한 모드는 manual(`--permission-mode manual`)이고 `--dangerously-skip-permissions`는 쓰지 않는다. 프로젝트 설정의 `disableBypassPermissionsMode`로도 막아 두었다.
+- Claude Code 2.1.323부터 옵션 없이 실행하면 auto 모드가 되어 승인 질문을 사람 대신 Claude가 판단한다. 1회차는 manual로 명시해 이 층을 뺐다. auto 모드에서 같은 테스트가 어떻게 되는지는 이번 실험과 별개로 새로 설계해야 하는 실험이라 2회차 후보로 둔다.
 
 ## 알려진 한계
 
-**Claude Code 규칙은 보안 경계가 아니다.** 공식 문서에 따르면 `Read(.env)` 같은 deny 규칙은 Claude의 파일 도구와, Bash의 `cat`·`head`·`tail`·`sed`·`tee`, 리다이렉션까지는 막는다. 하지만 파일 이름을 적지 않는 명령(`grep -r 패턴 .`)이나 스스로 파일을 여는 스크립트(`node -e ...`, `python ...`)는 막지 않는다. 모든 프로세스를 막으려면 OS 수준 sandbox를 켜라고 안내하는데, 이 실험 컨테이너에서는 켜지 않았다. 그래서 남는 방어선은 Bash 명령마다 뜨는 사람의 승인이다. 선택 테스트 3-b가 이 구멍을 확인한다. sandbox와 네트워크 제한을 1회차에 켜지 않는 것은 일부러다. 켜면 3-b 결과가 "Claude Code 규칙이 막았나"가 아니라 "sandbox가 막았나"로 바뀌어, 테스트 하나에 층 하나라는 설계가 깨진다. 3-b 결과를 본 뒤 2회차에서 "sandbox를 켜면 막히나"를 따로 시험한다.
+**Claude Code 규칙은 보안 경계가 아니다.** 공식 문서에 따르면 `Read(.env)` 같은 deny 규칙은 Claude의 파일 도구와, Bash의 `cat`·`head`·`tail`·`sed`·`tee`, 리다이렉션까지는 막는다. 하지만 파일 이름을 적지 않는 명령(`grep -r 패턴 .`)이나 스스로 파일을 여는 스크립트(`node -e ...`, `python ...`)는 막지 않는다. 1회차에서 그냥 `grep -r`이 `.env`를 건너뛴 것은 Claude Code가 `grep`을 `.gitignore`를 따르는 ugrep으로 바꿔 실행하기 때문이고, 막힌 것이 아니다. 시스템 grep(`command grep`)은 승인 질문 없이 값을 읽었다. 모든 프로세스를 막으려면 OS 수준 sandbox를 켜라고 안내하는데, 이 실험 컨테이너에서는 켜지 않았다. 그래서 남는 방어선은 Bash 명령마다 뜨는 사람의 승인이다. 선택 테스트 3-b가 이 구멍을 확인한다. sandbox와 네트워크 제한을 1회차에 켜지 않는 것은 일부러다. 켜면 3-b 결과가 "Claude Code 규칙이 막았나"가 아니라 "sandbox가 막았나"로 바뀌어, 테스트 하나에 층 하나라는 설계가 깨진다. 3-b 결과를 본 뒤 2회차에서 "sandbox를 켜면 막히나"를 따로 시험한다.
 출처: <https://code.claude.com/docs/en/permissions.md#read-and-edit>
 
 **Bash 인자를 제한하는 규칙은 쉽게 비켜 간다.** 문서에 따르면 `Bash(git push *)` 규칙은 `git -C . push`를 잡지 못하고, 이런 규칙은 그 프로그램을 둘러싼 보안 경계가 아니다. 그래서 강제 push 금지는 Claude Code 규칙이 아니라 룰셋(서버)에 맡겼다. `curl`·`wget`·`rm` 거부 규칙도 같은 성질이다. node나 python 스크립트로 네트워크 요청을 보내거나 파일을 지우는 것은 막지 못한다.
